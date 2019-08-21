@@ -102,23 +102,21 @@ while ~isDone(videoFileReader)
         [xform, oldInliers, visiblePoints] = estimateGeometricTransform(...
             oldInliers, visiblePoints, 'similarity', 'MaxDistance', 4);
         for i=1:numberOfDetectedFaces
-        % Apply the transformation to the bounding box points  bboxPointsArray
-%         bboxPoints = transformPointsForward(xform, bboxPoints);
-        bboxPointsArray{i} = transformPointsForward(xform, bboxPointsArray{i});
+            % Apply the transformation to the bounding box points  bboxPointsArray
+            bboxPointsArray{i} = transformPointsForward(xform, bboxPointsArray{i});
                 
-        % Insert a bounding box around the object being tracked
-%         bboxPolygon = reshape(bboxPoints', 1, []);
-        bboxPolygon = reshape(bboxPointsArray{i}', 1, []);
-        videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygon, ...
-            'LineWidth', 2);
+            % Insert a bounding box around the object being tracked
+            bboxPolygon = reshape(bboxPointsArray{i}', 1, []);
+            videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygon, ...
+                'LineWidth', 2);
                 
-        % Display tracked points
-        videoFrame = insertMarker(videoFrame, visiblePoints, '+', ...
-            'Color', 'white');       
+            % Display tracked points
+            videoFrame = insertMarker(videoFrame, visiblePoints, '+', ...
+                'Color', 'white');       
         
-        % Reset the points
-        oldPoints = visiblePoints;
-        setPoints(pointTracker, oldPoints);   
+            % Reset the points
+            oldPoints = visiblePoints;
+            setPoints(pointTracker, oldPoints);   
         end
     end
     
