@@ -28,16 +28,19 @@ classdef DetectorApp < matlab.apps.AppBase
          facesD;
          bboxApp;
          bboxPointsArray;
+         videoFileReader;
+         videoFrame;
     end
 
     methods (Access = private)
     
         function results = detectFromVideoStart(app)
             
-            faceDetector = vision.CascadeObjectDetector();    
-            videoFileReader = vision.VideoFileReader(app.videoExample);       
-            videoFrame      = step(videoFileReader);
-            bbox            = step(faceDetector, videoFrame);
+            faceDetector = vision.CascadeObjectDetector();  
+            faceDetector.MergeThreshold = 10;
+            app.videoFileReader = vision.VideoFileReader(app.videoExample);       
+            app.videoFrame      = step(app.videoFileReader);
+            bbox            = step(faceDetector, app.videoFrame);
             
             disp("bbox: ");
             disp(isempty(bbox));
@@ -46,13 +49,13 @@ classdef DetectorApp < matlab.apps.AppBase
                 
                 while (isempty(bbox) == 1)
                     disp("No faces detectd in this frame (bbox) ");
-                    videoFrame      = step(videoFileReader);
-                    bbox            = step(faceDetector, videoFrame);
+                    app.videoFrame      = step(app.videoFileReader);
+                    bbox            = step(faceDetector, app.videoFrame);
                 end
                 
             disp("after  if ");            
-            videoFrame = insertShape(videoFrame, 'Rectangle', bbox);           
-            imshow(videoFrame, 'Parent', app.UIAxesMainPanel);           
+            app.videoFrame = insertShape(app.videoFrame, 'Rectangle', bbox);           
+            imshow(app.videoFrame, 'Parent', app.UIAxesMainPanel);           
             
           
 %             bboxPoints = bbox2points(bbox(1, :));
@@ -71,13 +74,13 @@ classdef DetectorApp < matlab.apps.AppBase
             % Detect feature points in the face region.
              faces = {};
              for i = 1:numberOfDetectedFaces
-                 face = detectMinEigenFeatures(rgb2gray(videoFrame), 'ROI', bbox(i,:));
+                 face = detectMinEigenFeatures(rgb2gray(app.videoFrame), 'ROI', bbox(i,:));
                  disp("in loop - face:");
                  disp(face.Count);
                  if eq(face.Count, 0) == 1
                      disp("face 000000");                             %  go back to face detector method here in some kind of loop
-                     videoFrame      = step(videoFileReader);
-                     bbox            = step(faceDetector, videoFrame);
+                     app.videoFrame      = step(app.videoFileReader);
+                     bbox            = step(faceDetector, app.videoFrame);
                  else
                      faces{i} = face;  
                      disp("faces points recognized");
@@ -114,7 +117,7 @@ classdef DetectorApp < matlab.apps.AppBase
              disp(size(arrayOfPanels, 2));
             
              for i = 1:iteratorBorder                      % should iterate over numer of panels avaialble to display                            
-                 newImage = imcrop(videoFrame, bbox(i,:));
+                 newImage = imcrop(app.videoFrame, bbox(i,:));
                  imshow( newImage, 'Parent', arrayOfPanels(i));
              end   
             
@@ -132,8 +135,8 @@ classdef DetectorApp < matlab.apps.AppBase
                 disp(app.flagSelectedPhotoNumber);
             
 %                 faceDetector = vision.CascadeObjectDetector();    
-                 videoFileReader = vision.VideoFileReader(app.videoExample);       
-                 videoFrame      = step(videoFileReader);
+%                  videoFileReader = vision.VideoFileReader(app.videoExample);       
+%                  videoFrame      = step(videoFileReader);
 %                 bbox            = step(faceDetector, videoFrame);
             
                 pointTracker = vision.PointTracker('MaxBidirectionalError', 2);
@@ -142,19 +145,19 @@ classdef DetectorApp < matlab.apps.AppBase
                 facePointsArray = face.Location;
                 disp("face point array: ");
                 disp(facePointsArray);
-                initialize(pointTracker, facePointsArray, videoFrame);
+                initialize(pointTracker, facePointsArray, app.videoFrame);
          
                 videoPlayer  = vision.VideoPlayer('Position',...
-                          [100 100 [size(videoFrame, 2), size(videoFrame, 1)]+30]);
+                          [100 100 [size(app.videoFrame, 2), size(app.videoFrame, 1)]+30]);
         
                 
                 oldPoints = facePointsArray;
                 
                 
-                while ~isDone(videoFileReader)
+                while ~isDone(app.videoFileReader)
             
-                     videoFrame = step(videoFileReader);
-                     [AllPointsForFaces, isFound] = step(pointTracker, videoFrame);   
+                     app.videoFrame = step(app.videoFileReader);
+                     [AllPointsForFaces, isFound] = step(pointTracker, app.videoFrame);   
                      visiblePoints = AllPointsForFaces(isFound, :);  
                      oldInliers = oldPoints(isFound, :);
              
@@ -169,11 +172,11 @@ classdef DetectorApp < matlab.apps.AppBase
                              
                         
                          bboxPolygon = reshape(app.bboxPointsArray{app.flagSelectedPhotoNumber}', 1, []);
-                         videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygon, ...
+                         app.videoFrame = insertShape(app.videoFrame, 'Polygon', bboxPolygon, ...
                              'LineWidth', 2);
                              
                        
-                         videoFrame = insertMarker(videoFrame, visiblePoints, '+', ...
+                         app.videoFrame = insertMarker(app.videoFrame, visiblePoints, '+', ...
                              'Color', 'white');       
                      
                          % Reset the points
@@ -183,19 +186,19 @@ classdef DetectorApp < matlab.apps.AppBase
                     end
              
             
-                 step(videoPlayer, videoFrame);
+                 step(videoPlayer, app.videoFrame);
                  end
                                    
-                release(videoFileReader);
+                release(app.videoFileReader);
                 release(videoPlayer);
                 release(pointTracker);
         end       
 
         function results = findFacePoints(app)           
             faceDetector = vision.CascadeObjectDetector();    
-            videoFileReader = vision.VideoFileReader(app.videoExample);       
-            videoFrame      = step(videoFileReader);
-            app.bboxApp            = step(faceDetector, videoFrame);
+            app.videoFileReader = vision.VideoFileReader(app.videoExample);       
+            app.videoFrame      = step(app.videoFileReader);
+            app.bboxApp            = step(faceDetector, app.videoFrame);
         end
         
     end
