@@ -1,0 +1,307 @@
+classdef DetectorApp < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                     matlab.ui.Figure
+        SelectcharactertotrackLabel  matlab.ui.control.Label
+        ButtonGroup                  matlab.ui.container.ButtonGroup
+        UppercharacterButton         matlab.ui.control.RadioButton
+        LowerCharacterButton         matlab.ui.control.RadioButton
+        Switch                       matlab.ui.control.ToggleSwitch
+        UIAxesMainPanel              matlab.ui.control.UIAxes
+        UIAxesUpperPanel             matlab.ui.control.UIAxes
+        UIAxesLowerPanel             matlab.ui.control.UIAxes
+        TextArea                     matlab.ui.control.TextArea
+        DetectedfacesLabel           matlab.ui.control.Label
+    end
+
+
+    properties (Access = private)
+        Property % Description
+         upperPhotoPath = 'E:\TBBT Training Set Data\shel3.png';
+         lowerPhotoPath = 'E:\TBBT Training Set Data\how.png';
+         videoExample = 'E:\TBBT Training Set Data\video_test11.mp4';
+%          videoExample = 'E:\TBBT Training Set Data\double_face2.png';
+         detectedPointsUpperPhoto;
+         detectedPointsLowerPhoto;
+         detectedPointsVideo;
+         flagSelectedPhotoNumber = 1;
+         facesD;
+         bbox;
+         bboxPointsArray;
+         videoFileReader;
+         videoFrame;
+         numberOfDetectedFaces;
+         detectionThreshold = 10;
+         faces;
+         isAtLeastOneFaceDetected;
+    end
+
+    methods (Access = private)
+    
+        function results = detectFromVideoStart(app)
+            
+            faceDetector = vision.CascadeObjectDetector();  
+            faceDetector.MergeThreshold = app.detectionThreshold;
+            app.videoFileReader = vision.VideoFileReader(app.videoExample);       
+            app.videoFrame = step(app.videoFileReader);
+            app.bbox = step(faceDetector, app.videoFrame);
+                       
+            while true
+                
+                while (isempty(app.bbox) == 1)                    
+                    app.videoFrame = step(app.videoFileReader);
+                    app.bbox = step(faceDetector, app.videoFrame);
+                end
+                                     
+                app.videoFrame = insertShape(app.videoFrame, 'Rectangle', app.bbox);           
+                imshow(app.videoFrame, 'Parent', app.UIAxesMainPanel);           
+                      
+                sizeHolder = size(app.bbox);
+                app.numberOfDetectedFaces = sizeHolder(1);
+                     
+                convertBboxToPoints(app);
+               
+                detectFeaturePointsInFaceRegion(app);
+          
+                checkIfAtLeastOneFaceIsDetected(app);
+                
+                if app.isAtLeastOneFaceDetected
+                    break;
+                end
+              
+           end
+                                                  
+           showBoxesWithDetectedFacesInSidePanel(app);      
+                                                                      
+        end
+        
+        
+        function results = trackSelectedDace(app)
+                                     
+                pointTracker = vision.PointTracker('MaxBidirectionalError', 2);
+        
+                face = app.faces{app.flagSelectedPhotoNumber};
+                facePointsArray = face.Location;             
+                initialize(pointTracker, facePointsArray, app.videoFrame);
+         
+                videoPlayer  = vision.VideoPlayer('Position',...
+                          [100 100 [size(app.videoFrame, 2), size(app.videoFrame, 1)]+30]);
+        
+                
+                oldPoints = facePointsArray;
+                
+                
+                while ~isDone(app.videoFileReader)
+            
+                     app.videoFrame = step(app.videoFileReader);
+                     [AllPointsForFaces, isFound] = step(pointTracker, app.videoFrame);   
+                     visiblePoints = AllPointsForFaces(isFound, :);  
+                     oldInliers = oldPoints(isFound, :);
+             
+                     if size(visiblePoints, 1) >= 2 % need at least 2 points
+                 
+                 
+                     [xform, oldInliers, visiblePoints] = estimateGeometricTransform(...
+                         oldInliers, visiblePoints, 'similarity', 'MaxDistance', 4);
+                                              
+                         app.bboxPointsArray{app.flagSelectedPhotoNumber} = transformPointsForward(xform, app.bboxPointsArray{app.flagSelectedPhotoNumber});                            
+                        
+                         bboxPolygon = reshape(app.bboxPointsArray{app.flagSelectedPhotoNumber}', 1, []);
+                         app.videoFrame = insertShape(app.videoFrame, 'Polygon', bboxPolygon, ...
+                             'LineWidth', 2);
+                             
+                       
+                         app.videoFrame = insertMarker(app.videoFrame, visiblePoints, '+', ...
+                             'Color', 'white');       
+                     
+                         % Reset the points
+                         oldPoints = visiblePoints;
+                         setPoints(pointTracker, oldPoints);   
+                     
+                    end
+             
+                 %  here put code to do detection in real time
+                 
+                 step(videoPlayer, app.videoFrame);
+                 end
+                                   
+                release(app.videoFileReader);
+                release(videoPlayer);
+                release(pointTracker);
+        end       
+        
+        function results = showBoxesWithDetectedFacesInSidePanel(app)
+            
+             arrayOfPanels = [ app.UIAxesUpperPanel app.UIAxesLowerPanel];
+                       
+             iteratorBorder = 0;
+             if size(arrayOfPanels, 2) < app.numberOfDetectedFaces       
+                    iteratorBorder = size(arrayOfPanels, 2);                                                                    
+                else
+                    iteratorBorder = app.numberOfDetectedFaces;
+             end                       
+            
+             for i = 1:iteratorBorder                                                 
+                 newImage = imcrop(app.videoFrame, app.bbox(i,:));
+                 imshow( newImage, 'Parent', arrayOfPanels(i));
+             end   
+            
+        end
+    
+        
+        function results = convertBboxToPoints(app)
+            app.bboxPointsArray = {};
+            for i=1:app.numberOfDetectedFaces
+               app.bboxPointsArray{i} = bbox2points(app.bbox(i, :));
+            end
+        end
+    
+        
+        function results = detectFeaturePointsInFaceRegion(app)
+             app.faces = {};
+             for i = 1:app.numberOfDetectedFaces
+                 face = detectMinEigenFeatures(rgb2gray(app.videoFrame), 'ROI', app.bbox(i,:));               
+                 if eq(face.Count, 0) == 1                                                 %  go back to face detector method here in some kind of loop
+                     app.videoFrame = step(app.videoFileReader);
+                     app.bbox = step(faceDetector, app.videoFrame);
+                 else
+                     app.faces{i} = face;                    
+                 end
+             end 
+        end
+    
+        
+        function results = checkIfAtLeastOneFaceIsDetected(app)
+            app.isAtLeastOneFaceDetected = (isempty(app.bbox) == 0 && isempty(app.faces) == 0);           
+        end
+        
+    end
+
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+              detectFromVideoStart(app);        
+        end
+
+        % Selection changed function: ButtonGroup
+        function ButtonGroupSelectionChanged(app, event)
+            selectedButton = app.ButtonGroup.SelectedObject;            
+            if selectedButton == app.UppercharacterButton       
+                app.flagSelectedPhotoNumber = 1;                             
+            elseif selectedButton == app.LowerCharacterButton                        
+                app.flagSelectedPhotoNumber = 2;                               
+            else
+                disp("none");
+            end
+        end
+
+        % Value changed function: Switch
+        function SwitchValueChanged(app, event)
+            value = app.Switch.Value;
+            app.TextArea.Value = value;
+            if 1 == strcmp(value, 'START')
+                trackSelectedDace(app);                                
+            elseif 1 == strcmp(value, 'STOP')              
+                 closereq;             
+            end
+        end
+    end
+
+    % App initialization and construction
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure
+            app.UIFigure = uifigure;
+            app.UIFigure.Position = [100 100 1171 652];
+            app.UIFigure.Name = 'UI Figure';
+
+            % Create SelectcharactertotrackLabel
+            app.SelectcharactertotrackLabel = uilabel(app.UIFigure);
+            app.SelectcharactertotrackLabel.FontName = 'Book Antiqua';
+            app.SelectcharactertotrackLabel.FontSize = 14;
+            app.SelectcharactertotrackLabel.Position = [740 620 152 22];
+            app.SelectcharactertotrackLabel.Text = 'Select character to track';
+
+            % Create ButtonGroup
+            app.ButtonGroup = uibuttongroup(app.UIFigure);
+            app.ButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @ButtonGroupSelectionChanged, true);
+            app.ButtonGroup.Position = [629 253 100 56];
+
+            % Create UppercharacterButton
+            app.UppercharacterButton = uiradiobutton(app.ButtonGroup);
+            app.UppercharacterButton.Text = 'Upper character';
+            app.UppercharacterButton.Position = [1 33 108 22];
+            app.UppercharacterButton.Value = true;
+
+            % Create LowerCharacterButton
+            app.LowerCharacterButton = uiradiobutton(app.ButtonGroup);
+            app.LowerCharacterButton.Text = 'Lower Character';
+            app.LowerCharacterButton.Position = [1 8 111 22];
+
+            % Create Switch
+            app.Switch = uiswitch(app.UIFigure, 'toggle');
+            app.Switch.Items = {'STOP', 'START'};
+            app.Switch.ValueChangedFcn = createCallbackFcn(app, @SwitchValueChanged, true);
+            app.Switch.Position = [646 75 20 45];
+            app.Switch.Value = 'STOP';
+
+            % Create UIAxesMainPanel
+            app.UIAxesMainPanel = uiaxes(app.UIFigure);
+            app.UIAxesMainPanel.PlotBoxAspectRatio = [1 0.858823529411765 0.858823529411765];
+            app.UIAxesMainPanel.Position = [43 119 574 502];
+
+            % Create UIAxesUpperPanel
+            app.UIAxesUpperPanel = uiaxes(app.UIFigure);
+            app.UIAxesUpperPanel.PlotBoxAspectRatio = [1 0.670103092783505 0.670103092783505];
+            app.UIAxesUpperPanel.Position = [739 318 381 281];
+
+            % Create UIAxesLowerPanel
+            app.UIAxesLowerPanel = uiaxes(app.UIFigure);
+            app.UIAxesLowerPanel.PlotBoxAspectRatio = [1 0.422680412371134 0.422680412371134];
+            app.UIAxesLowerPanel.Position = [740 27 381 235];
+
+            % Create TextArea
+            app.TextArea = uitextarea(app.UIFigure);
+            app.TextArea.Position = [78 27 428 49];
+
+            % Create DetectedfacesLabel
+            app.DetectedfacesLabel = uilabel(app.UIFigure);
+            app.DetectedfacesLabel.FontName = 'Book Antiqua';
+            app.DetectedfacesLabel.FontSize = 14;
+            app.DetectedfacesLabel.Position = [78 620 94 22];
+            app.DetectedfacesLabel.Text = 'Detected faces';
+        end
+    end
+
+    methods (Access = public)
+
+        % Construct app
+        function app = DetectorApp
+
+            % Create and configure components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
